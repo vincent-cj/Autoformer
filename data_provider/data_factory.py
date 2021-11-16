@@ -24,7 +24,7 @@ def data_provider(args, flag):
         drop_last = False
         batch_size = 1
         freq = args.detail_freq
-        Data = Dataset_Pred
+        # Data = Dataset_Pred
     else:
         shuffle_flag = True
         drop_last = True
