@@ -33,18 +33,34 @@ class AutoCorrelation(nn.Module):
         length = values.shape[3]
         # find top k
         top_k = int(self.factor * math.log(length))
-        mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
-        index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]
-        weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)
+
+        # -------- author calculation method -------
+        mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)     # shape=(b,s)
+        index = torch.topk(torch.mean(mean_value, dim=0), top_k, dim=-1)[1]     # shape=(top_k,)
+        weights = torch.stack([mean_value[:, index[i]] for i in range(top_k)], dim=-1)      # shape=(b, top_k)
+
         # update corr
-        tmp_corr = torch.softmax(weights, dim=-1)
+        tmp_corr = torch.softmax(weights, dim = -1)
         # aggregation
         tmp_values = values
         delays_agg = torch.zeros_like(values).float()
         for i in range(top_k):
-            pattern = torch.roll(tmp_values, -int(index[i]), -1)
+            pattern = torch.roll(tmp_values, -int(index[i]), -1)    # (b,h,d,s)
             delays_agg = delays_agg + pattern * \
-                         (tmp_corr[:, i].unsqueeze(1).unsqueeze(1).unsqueeze(1).repeat(1, head, channel, length))
+                         (tmp_corr[:, i].unsqueeze(1).unsqueeze(1).unsqueeze(1).repeat(1, head, channel, length))   # (b,1,1,1)
+
+        # -------- updated calculation method -------
+        # shape=(b,h,d,s) -> (b,h,s)  在样本和head维度，计算的权重应该保持独立
+        # mean_value = torch.mean(corr, dim = 2)
+        # weights = torch.topk(mean_value, top_k, dim=-1)[0]     # shape=(b,h,d,top_k)
+        # tmp_corr = torch.softmax(weights, dim = -1)
+        #
+        # # aggregation
+        # tmp_values = values
+        # delays_agg = torch.zeros_like(values).float()
+        # for i in range(top_k):
+        #     pattern = torch.roll(tmp_values, -int(index[i]), -1)
+        #     delays_agg = delays_agg + pattern * tmp_corr[:, :, i].unsqueeze(dim = 2).unsqueeze(dim = 3)
         return delays_agg
 
     def time_delay_agg_inference(self, values, corr):
@@ -57,7 +73,7 @@ class AutoCorrelation(nn.Module):
         channel = values.shape[2]
         length = values.shape[3]
         # index init
-        init_index = torch.arange(length).unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(batch, head, channel, 1).cuda()
+        init_index = torch.arange(length).unsqueeze(0).unsqueeze(0).unsqueeze(0).repeat(batch, head, channel, 1).to(values.device)
         # find top k
         top_k = int(self.factor * math.log(length))
         mean_value = torch.mean(torch.mean(corr, dim=1), dim=1)
